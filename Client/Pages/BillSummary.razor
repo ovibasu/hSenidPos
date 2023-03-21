@@ -1,0 +1,99 @@
+﻿@page "/billSummary"
+@using hSenidPos.Shared.Models
+@using hSenidPos.Shared.ViewModels
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
+@inject NavigationManager NavigationManager
+@using MudBlazor
+@using System.Globalization
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@attribute [Authorize(Roles = "Admin")]
+@using Blazored.Toast.Configuration
+@inject IBillMasterService BillMasterService
+@inject HttpClient Http
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject IToastService ToastService
+
+@if (billMasters == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <MudTable Items="@billMasters" Class="mt-5"
+              Dense="@true" Hover="@true" Bordered="@true" Striped="@true"
+              Filter="new Func<BillMaster,bool>(FilterFunc1)"
+              @bind-SelectedItem="selectedItem1">
+        <ToolBarContent>
+            <MudText Typo="Typo.h6">Bill List:<hr /> </MudText>
+            <MudSpacer />
+            <MudTextField @bind-Value="searchString1" Placeholder="Search" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0"></MudTextField>
+        </ToolBarContent>
+        <HeaderContent>
+            <MudTh>Bill No</MudTh>
+            <MudTh>Date</MudTh>
+            <MudTh>Time</MudTh>
+            <MudTh>Sub Total</MudTh>
+            <MudTh>Discount</MudTh>
+            <MudTh>VAT</MudTh>
+            <MudTh>Grand Total</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Bill No">@context.BillNo</MudTd>
+            <MudTd DataLabel="Date">@context.BillDate.ToString("dd-MM-yyyy")</MudTd>
+            <MudTd DataLabel="Time">@context.BillTime.ToString("HH':'mm':'ss")</MudTd>
+            <MudTd DataLabel="Sub Total">@context.SubTotal</MudTd>
+            <MudTd DataLabel="Discount">@context.Discount</MudTd>
+            <MudTd DataLabel="VAT">@context.VAT</MudTd>
+            <MudTd DataLabel="Grand Total">@context.GrandTotal</MudTd>
+        </RowTemplate>
+        <PagerContent>
+            <MudTablePager PageSizeOptions="new int[]{10, 20}" RowsPerPageString="Rows Per Page:"></MudTablePager>
+        </PagerContent>
+    </MudTable>
+}
+
+@code {
+    public int Id { get; set; } = 0;
+    private IEnumerable<BillMaster> billMasters { get; set; } = new List<BillMaster>();
+    public BillMaster billMaster { get; set; } = new BillMaster();
+    private string searchString1 = "";
+    private BillMaster selectedItem1 = null;
+    private HashSet<BillMaster> selectedItems = new HashSet<BillMaster>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    protected async Task LoadData()
+    {
+        billMasters = await BillMasterService.GetBillMasters();
+    }
+
+    private bool FilterFunc1(BillMaster billMaster) => FilterFunc(billMaster, searchString1);
+
+    private bool FilterFunc(BillMaster billMaster, string searchString)
+    {
+        if (string.IsNullOrWhiteSpace(searchString))
+            return true;
+        if ($"{billMaster.BillMasterId}".Contains(searchString))
+            return true;
+        if (billMaster.BillNo.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if ($"{billMaster.BillDate}".Contains(searchString))
+            return true;
+        if ($"{billMaster.BillTime}".Contains(searchString))
+            return true;
+        if ($"{billMaster.SubTotal}".Contains(searchString))
+            return true;
+        if ($"{billMaster.Discount}".Contains(searchString))
+            return true;
+        if ($"{billMaster.VAT}".Contains(searchString))
+            return true;
+        if ($"{billMaster.GrandTotal}".Contains(searchString))
+            return true;
+        return false;
+    }
+}

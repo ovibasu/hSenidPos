@@ -1,0 +1,303 @@
+﻿@page "/bill"
+@using hSenidPos.Shared.Models
+@using hSenidPos.Shared.ViewModels
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
+@inject NavigationManager NavigationManager
+@using MudBlazor
+@using System.Globalization
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@attribute [Authorize(Roles = "Admin")]
+@using Blazored.Toast.Configuration
+@inject IItemService ItemService
+@inject IBillMasterService BillMasterService
+@inject IBillDetailsService BillDetailsService
+@inject HttpClient Http
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject IToastService ToastService
+
+<MudCard>
+    <EditForm Model="@billMaster">
+        <DataAnnotationsValidator />
+        <div class="row">
+            <div class="col-md-3">
+                <div class="form-group" style="padding-left: 10px;">
+                    <MudDatePicker Label="Bill Date: " @bind-Date="BillDate" Culture="@CultureInfo.GetCultureInfo("bn-BD")" TitleDateFormat="dddd, dd MMMM" />
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-3">
+                <div class="form-group" style="padding-left: 10px;">
+                    <label for="Time" class="control-label">Time:</label>
+                    <input type="time" class="form-control time-control" required step="300" @bind="@time" />
+                </div>
+            </div>
+        </div>
+    </EditForm>
+</MudCard>
+<MudCard>
+    <EditForm Model="@billDetail">
+        <DataAnnotationsValidator />
+        <div class="row">
+            <div class="col-md-3">
+                <div class="form-group" style="padding-left: 10px;">
+                    <label for="ItemId" class="control-label" style="margin-bottom: 0px;">Item: </label>
+                    &nbsp;<ValidationMessage For="@(() => billDetail.ItemId)" />
+                    <RadzenDropDown AllowClear="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Data=@items @bind-Value=@billDetail.ItemId
+                                    Placeholder="--Select Item--" TextProperty="ItemName" ValueProperty="ItemId" Change=@(args => OnItemChange(args, "Filter Item")) Style="padding-top: 7px;" Class="w-100" />
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-group">
+                    <label for="Quantity" class="control-label">Quantity:</label>
+                    <input type="number" for="Quantity" class="form-control" @bind="@billDetail.Quantity" @oninput="@GetTotalTk"/>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-group">
+                    <label for="ItemRate" class="control-label">Price / Unit:</label>
+                    <input type="number" disabled for="ItemRate" class="form-control" @bind="@itemRate" />
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-group">
+                    <label for="Amount" class="control-label">Amount:</label>
+                    <input type="number" disabled for="Amount" class="form-control" @bind="@billDetail.Amount" />
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-10">
+            </div>
+            <div class="col-md-1">
+                <div class="form-group">
+                    <input type="submit" class="btn btn-primary" @onclick="@AddItem" value="AddToBill" style="margin-right: 10px;" />
+                </div>
+            </div>
+            <div class="col-md-1">
+                <div class="form-group">
+                    <input type="submit" class="btn btn-primary" @onclick="@ClearItem" value="Reset" style="margin-right: 10px;" />
+                </div>
+            </div>
+        </div>
+    </EditForm>
+</MudCard>
+<MudCard>
+    <EditForm Model="@billMaster">
+        <div class="row">
+            @if (itemList != null)
+            {
+                <table class="table" style="margin-left: 16px; margin-right: 15px;">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th>Quantity</th>
+                            <th>Price / Unit</th>
+                            <th>Amount</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in itemList)
+                        {
+                            <tr>
+                                <td>@item.ItemName</td>
+                                <td>@item.Quantity</td>
+                                <td>@item.ItemRate</td>
+                                <td>@item.Amount</td>
+                                <td>
+                                    <button type="button" class="btn btn-link" @onclick="() => Delete(item)">
+                                        <i class="oi oi-trash" />
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </EditForm>
+</MudCard>
+<MudCard>
+    <EditForm Model="@billMaster">
+        <div class="row">
+            <div class="col-md-3">
+                <div class="form-group" style="padding-left: 10px;">
+                    <label for="Sales" class="control-label">Sub Total:</label>
+                    <input type="number" disabled for="Sales" class="form-control" @bind="@sales" />
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-group">
+                    <label for="Discount" class="control-label">Discount:</label>
+                    <input type="number" for="Discount" class="form-control" @bind="@billMaster.Discount"  @oninput="@GetGrandTotal" />
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-group">
+                    <label for="VAT" class="control-label">VAT: </label>
+                    <input type="number" disabled for="VAT" class="form-control" @bind="@vat"/>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-group">
+                    <label for="amount" class="control-label">Grand Total:</label>
+                    <input type="number" disabled for="amount" class="form-control" @bind="@amount" />
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-3">
+                <div class="form-group" style="padding-left: 10px;">
+                    <input type="submit" class="btn btn-primary" @onclick="@CreateBill" value="Amount Paid & Add New Bill" />
+                </div>
+            </div>
+        </div>
+    </EditForm>
+</MudCard>
+
+@code {
+    public int Id { get; set; } = 0;
+    private IEnumerable<BillDetails> billDetails { get; set; } = new List<BillDetails>();
+    private IEnumerable<Item> items { get; set; } = new List<Item>();
+    private List<BillItem> itemList { get; set; } = new List<BillItem>();
+    public BillMaster billMaster { get; set; } = new BillMaster();
+    public BillDetails billDetail { get; set; } = new BillDetails();
+    public Item item { get; set; } = new Item();
+    private DateTime? BillDate = new DateTime();
+    protected DateTime time = new DateTime();
+    private decimal itemRate { get; set; } = 0;
+    public decimal sales { get; set; } = 0;
+    public decimal amount { get; set; } = 0;
+    public decimal vat { get; set; } = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    protected async Task LoadData()
+    {
+        BillDate = DateTime.UtcNow;
+        time = DateTime.UtcNow.Date.AddHours(DateTime.UtcNow.Hour+6).AddMinutes(DateTime.UtcNow.Minute).AddSeconds(DateTime.UtcNow.Second);
+        items = await ItemService.GetItems();
+    }
+
+    public async Task OnItemChange(object value, string name)
+    {
+        item = await ItemService.GetItem(billDetail.ItemId);
+        itemRate = item.ItemRate;
+    }
+
+    public void GetTotalTk(ChangeEventArgs e)
+    {
+        if (e.Value.ToString() != string.Empty)
+        {
+            billDetail.Amount = itemRate * Convert.ToDecimal(e.Value.ToString());
+        }
+        else
+        {
+            billDetail.Amount = 0;
+        }
+
+    }
+
+    public void GetGrandTotal(ChangeEventArgs e)
+    {
+        if (e.Value.ToString() != string.Empty)
+        {
+            amount = (sales + vat) - Convert.ToDecimal(e.Value.ToString());
+        }
+        else
+        {
+            amount = sales + vat;
+        }
+    }
+
+    protected async Task AddItem()
+    {
+        item = await ItemService.GetItem(billDetail.ItemId);
+        BillItem bill = new BillItem();
+        bill.ItemId = billDetail.ItemId;
+        bill.ItemName = item.ItemName;
+        bill.Quantity = billDetail.Quantity;
+        bill.ItemRate = item.ItemRate;
+        bill.Amount = billDetail.Amount;
+        sales += Math.Round(billDetail.Amount, 2);
+        vat += Math.Round(billDetail.Amount * 12 / 100, 2);
+        amount += Math.Round(billDetail.Amount, 2) + Math.Round(billDetail.Amount * 12 / 100, 2);
+        itemList.Add(bill);
+        billDetail.ItemId = 0;
+        billDetail.Quantity = 0;
+        itemRate = 0;
+        billDetail.Amount = 0;
+    }
+
+    public async Task Delete(BillItem obj)
+    {
+        if (Id != 0)
+        {
+            itemList.Remove(obj);
+            await BillDetailsService.DeleteBillDetails(obj.BillDetailsId);
+        }
+        else
+        {
+            itemList.Remove(obj);
+        }
+    }
+
+    protected async Task CreateBill()
+    {
+        billMaster.SubTotal = sales;
+        billMaster.VAT = vat;
+        billMaster.GrandTotal = amount;
+        billMaster.BillDate = Convert.ToDateTime(BillDate);
+        billMaster.BillTime = time;
+        var bill = await BillMasterService.PostBillMaster(billMaster);
+        List<BillDetails> bills = new List<BillDetails>();
+        foreach (var item in itemList)
+        {
+            BillDetails bd = new BillDetails();
+            bd.ItemId = item.ItemId;
+            bd.Quantity = item.Quantity;
+            bd.Amount = item.Amount;
+            bd.BillMasterId = bill.BillMasterId;
+            bills.Add(bd);
+        }
+        await BillDetailsService.PostBillDetails(bills);
+        Clear();
+        await LoadData();
+        ToastService.ShowSuccess("Created Successfully.");
+    }
+
+    void Clear()
+    {
+        Id = 0;
+        BillDate = DateTime.UtcNow;
+        billMaster.SubTotal = 0;
+        billMaster.Discount = 0;
+        billDetails = null;
+        itemList.Clear();
+        sales = 0;
+        amount = 0;
+        billMaster.VAT = 0;
+        billMaster.GrandTotal = 0;
+    }
+
+    void ClearItem()
+    {
+        billDetail.ItemId = 0;
+        billDetail.Quantity = 0;
+        itemRate = 0;
+        billDetail.Amount = 0;
+    }
+}
+
+<BlazoredToasts Position="ToastPosition.TopRight"
+                Timeout="5"
+                IconType="IconType.FontAwesome"
+                SuccessClass="success-toast-override"
+                SuccessIcon="fa fa-thumbs-up"
+                ErrorIcon="fa fa-bug" />

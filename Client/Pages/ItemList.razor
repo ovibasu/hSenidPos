@@ -1,0 +1,200 @@
+﻿@page "/itemList"
+@using hSenidPos.Shared.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
+@inject NavigationManager NavigationManager
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@attribute [Authorize(Roles = "Admin")]
+@using Blazored.Toast.Configuration
+@inject IItemService ItemService
+@inject HttpClient Http
+@inject IJSRuntime JSRuntime
+@inject IToastService ToastService
+
+
+<h3 style="margin-top: -15px;">Add / Edit Item: </h3>
+<hr />
+
+<MudCard>
+    <EditForm Model="@item">
+        <DataAnnotationsValidator />
+        <div class="row">
+            <div class="col-md-3">
+                <div class="form-group" style="padding-left: 10px;">
+                    <label for="ItemName" class="control-label">Item Name:<span style="color:red;">*</span></label>
+                    <input for="ItemName" class="form-control" @bind="@item.ItemName" />
+                    &nbsp;<ValidationMessage For="@(() => item.ItemName)" />
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-group">
+                    <label for="ItemRate" class="control-label">Rate:<span style="color:red;">*</span></label>
+                    <input for="ItemRate" class="form-control" @bind="@item.ItemRate" />
+                    &nbsp;<ValidationMessage For="@(() => item.ItemRate)" />
+                </div>
+            </div>
+            <div class="col-md-3">
+                @if (Id == 0)
+                {
+                    <div class="form-group" style="padding-left: 10px;">
+                        <input type="submit" class="btn btn-primary" @onclick="@CreateItem" value="Save" style="margin-top: 28px;" />
+                    </div>
+                }
+                else
+                {
+                    <div class="form-group" style="padding-left: 10px;">
+                        <input type="submit" class="btn btn-primary" @onclick="@UpdateItem" value="Update" style="margin-top: 28px;" />
+                    </div>
+                }
+            </div>
+        </div>
+    </EditForm>
+</MudCard>
+
+@if (items == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <MudTable Items="@items" Class="mt-5"
+              Dense="@true" Hover="@true" Bordered="@true" Striped="@true"
+              Filter="new Func<Item,bool>(FilterFunc1)"
+              @bind-SelectedItem="selectedItem1">
+        <ToolBarContent>
+            <MudText Typo="Typo.h6">Items:<hr /> </MudText>
+            <MudSpacer />
+            <MudTextField @bind-Value="searchString1" Placeholder="Search" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0"></MudTextField>
+        </ToolBarContent>
+        <HeaderContent>
+            <MudTh>Item Name</MudTh>
+            <MudTh>Rate</MudTh>
+            @*<MudTh>Brand Name</MudTh>*@
+            <MudTh>Action</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Item Name">@context.ItemName</MudTd>
+            <MudTd DataLabel="Rate">@context.ItemRate</MudTd>
+            @*<MudTd DataLabel="Item Name">@context.BrandName</MudTd>*@
+            <MudTd DataLabel="Action">
+                <button type="button" class="btn btn-link" @onclick="() => EditItem(context.ItemId)">
+                    <i class="oi oi-pencil" />
+                </button>
+                <button type="button" class="btn btn-link" @onclick="() => DeleteItem(context.ItemId)">
+                    <i class="oi oi-trash" />
+                </button>
+            </MudTd>
+        </RowTemplate>
+        <PagerContent>
+            <MudTablePager PageSizeOptions="new int[]{10, 20}" RowsPerPageString="Rows Per Page:"></MudTablePager>
+        </PagerContent>
+    </MudTable>
+}
+
+@code {
+    public int Id { get; set; } = 0;
+    private IEnumerable<Item> items { get; set; } = new List<Item>();
+    public Item item { get; set; } = new Item();
+    private string searchString1 = "";
+    private Item selectedItem1 = null;
+    private HashSet<Item> selectedItems = new HashSet<Item>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    protected async Task LoadData()
+    {
+        items = await ItemService.GetItems();
+    }
+
+    protected async Task CreateItem()
+    {
+        if (item.ItemName == null || item.ItemName == string.Empty)
+        {
+            ToastService.ShowWarning("Item Name is Required?");
+        }
+        else if (item.ItemRate == 0)
+        {
+            ToastService.ShowWarning("Item rate is Required?");
+        }
+        else
+        {
+            await ItemService.PostItem(item);
+            Clear();
+            await LoadData();
+            ToastService.ShowSuccess("Created Successfully.");
+        }
+    }
+
+    protected async Task EditItem(int itemId)
+    {
+        bool confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure to edit this?");
+        if (confirmed)
+        {
+            item = await ItemService.GetItem(itemId);
+            Id = itemId;
+        }
+    }
+
+    protected async Task DeleteItem(int itemId)
+    {
+        bool confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure to delete this?");
+        if (confirmed)
+        {
+            await ItemService.DeleteItem(itemId);
+            await LoadData();
+            ToastService.ShowSuccess("Deleted Successfully.");
+        }
+    }
+
+    protected async Task UpdateItem()
+    {
+        if (item.ItemName == string.Empty)
+        {
+            ToastService.ShowWarning("Item Name is Required?");
+        }
+        else if (item.ItemRate == 0)
+        {
+            ToastService.ShowWarning("Item rate is Required?");
+        }
+        else
+        {
+            await ItemService.PutItem(Id, item);
+            Clear();
+            await LoadData();
+            ToastService.ShowSuccess("Updated Successfully.");
+        }
+    }
+
+    private bool FilterFunc1(Item item) => FilterFunc(item, searchString1);
+
+    private bool FilterFunc(Item item, string searchString)
+    {
+        if (string.IsNullOrWhiteSpace(searchString))
+            return true;
+        if (item.ItemName.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if ($"{item.ItemId}".Contains(searchString))
+            return true;
+        if ($"{item.ItemRate}".Contains(searchString))
+            return true;
+        return false;
+    }
+
+    void Clear()
+    {
+        Id = 0;
+        item.ItemId = 0;
+        item.ItemName = "";
+        item.ItemRate = 0;
+    }
+}
+
+<BlazoredToasts Position="ToastPosition.TopRight"
+                Timeout="5"
+                IconType="IconType.FontAwesome"
+                SuccessClass="success-toast-override"
+                SuccessIcon="fa fa-thumbs-up"
+                ErrorIcon="fa fa-bug" />
